@@ -1,0 +1,168 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../backend/src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./skypatrol.db"
+}
+
+// Модель для ролей пользователей
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  users       User[]
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+// Модель для пользователей
+model User {
+  id            Int             @id @default(autoincrement())
+  username      String          @unique
+  email         String          @unique
+  passwordHash  String          @map("password_hash")
+  fullName      String?         @map("full_name")
+  roleId        Int             @map("role_id")
+  role          Role            @relation(fields: [roleId], references: [id])
+  isActive      Boolean         @default(true) @map("is_active")
+  lastLogin     DateTime?       @map("last_login")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  drones        Drone[]
+  routes        Route[]
+  flightHistory FlightHistory[]
+  events        Event[]
+
+  @@map("users")
+}
+
+// Модель для дронов
+model Drone {
+  id            Int             @id @default(autoincrement())
+  name          String
+  model         String
+  serialNumber  String          @unique @map("serial_number")
+  status        DroneStatus     @default(IDLE)
+  batteryLevel  Int             @default(100) @map("battery_level")
+  latitude      Float?
+  longitude     Float?
+  altitude      Float?
+  speed         Float?
+  ownerId       Int             @map("owner_id")
+  owner         User            @relation(fields: [ownerId], references: [id])
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  routes        Route[]
+  flightHistory FlightHistory[]
+  events        Event[]
+  detections    Detection[]
+
+  @@map("drones")
+}
+
+// Статусы дронов
+enum DroneStatus {
+  ACTIVE
+  IDLE
+  MAINTENANCE
+  OFFLINE
+}
+
+// Модель для маршрутов
+model Route {
+  id          Int             @id @default(autoincrement())
+  name        String
+  description String?
+  coordinates Json // Массив координат [lat, lng]
+  createdBy   Int             @map("created_by")
+  user        User            @relation(fields: [createdBy], references: [id])
+  droneId     Int?            @map("drone_id")
+  drone       Drone?          @relation(fields: [droneId], references: [id])
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  flights     FlightHistory[]
+
+  @@map("routes")
+}
+
+// Модель для истории полетов
+model FlightHistory {
+  id          Int       @id @default(autoincrement())
+  droneId     Int       @map("drone_id")
+  drone       Drone     @relation(fields: [droneId], references: [id])
+  routeId     Int?      @map("route_id")
+  route       Route?    @relation(fields: [routeId], references: [id])
+  pilotId     Int       @map("pilot_id")
+  pilot       User      @relation(fields: [pilotId], references: [id])
+  startTime   DateTime  @map("start_time")
+  endTime     DateTime? @map("end_time")
+  distance    Float?
+  maxAltitude Float?    @map("max_altitude")
+  maxSpeed    Float?    @map("max_speed")
+  telemetry   Json? // Массив данных телеметрии
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("flight_history")
+}
+
+// Модель для событий и оповещений
+model Event {
+  id        Int       @id @default(autoincrement())
+  type      EventType
+  message   String
+  severity  Severity
+  read      Boolean   @default(false)
+  droneId   Int?      @map("drone_id")
+  drone     Drone?    @relation(fields: [droneId], references: [id])
+  userId    Int?      @map("user_id")
+  user      User?     @relation(fields: [userId], references: [id])
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("events")
+}
+
+// Типы событий
+enum EventType {
+  SYSTEM
+  ALERT
+  DETECTION
+  INFO
+}
+
+// Уровни серьезности событий
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Модель для обнаруженных объектов
+model Detection {
+  id          Int      @id @default(autoincrement())
+  droneId     Int      @map("drone_id")
+  drone       Drone    @relation(fields: [droneId], references: [id])
+  objectType  String   @map("object_type") // Тип объекта (человек, машина, лицо и т.д.)
+  confidence  Float // Уровень уверенности от 0 до 1
+  coordinates Json // Координаты обнаружения [lat, lng]
+  timestamp   DateTime
+  imageUrl    String?  @map("image_url") // URL к изображению с обнаруженным объектом
+  metadata    Json? // Дополнительные данные (номер авто, ID лица и т.д.)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("detections")
+}

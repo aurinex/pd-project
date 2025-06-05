@@ -29,7 +29,7 @@ router.get('/:id', authenticate, getDroneById);
  * @desc Создание нового дрона
  * @access Private (только для админа и оператора)
  */
-router.post('/', authenticate, authorize(['admin', 'operator']), createDrone);
+router.post('/', authenticate, authorize(['ADMIN', 'OPERATOR']), createDrone);
 
 /**
  * @route PUT /api/drones/:id

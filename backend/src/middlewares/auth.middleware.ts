@@ -65,7 +65,11 @@ export const authorize = (roles: string[]) => {
       return;
     }
     
-    if (!roles.includes(req.user.role)) {
+    // Преобразуем роли к верхнему регистру для сравнения независимо от регистра
+    const userRole = req.user.role.toUpperCase();
+    const allowedRoles = roles.map(role => role.toUpperCase());
+    
+    if (!allowedRoles.includes(userRole)) {
       res.status(403).json({
         success: false,
         message: 'Доступ запрещен'
@@ -100,7 +104,7 @@ export const checkOwnership = (resourceType: 'drone' | 'route') => {
       }
       
       // Если пользователь администратор, разрешаем доступ
-      if (req.user.role === 'ADMIN') {
+      if (req.user.role.toUpperCase() === 'ADMIN') {
         next();
         return;
       }

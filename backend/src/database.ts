@@ -35,21 +35,21 @@ export async function seedDB() {
       // Создаем роли
       const adminRole = await prisma.role.create({
         data: {
-          name: 'admin',
+          name: 'ADMIN',
           description: 'Администратор системы',
         },
       });
       
       const operatorRole = await prisma.role.create({
         data: {
-          name: 'operator',
+          name: 'OPERATOR',
           description: 'Оператор дронов',
         },
       });
       
       const viewerRole = await prisma.role.create({
         data: {
-          name: 'viewer',
+          name: 'VIEWER',
           description: 'Наблюдатель с ограниченным доступом',
         },
       });

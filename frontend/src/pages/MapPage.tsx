@@ -437,8 +437,14 @@ const MapPage: React.FC = () => {
       </Box>
       
       {/* Диалог создания нового маршрута */}
-      <Dialog open={newRouteDialog} onClose={handleCloseNewRouteDialog}>
-        <DialogTitle>Создать новый маршрут</DialogTitle>
+      <Dialog 
+        open={newRouteDialog} 
+        onClose={handleCloseNewRouteDialog}
+        disablePortal={false}
+        keepMounted={false}
+        aria-labelledby="new-route-dialog-title"
+      >
+        <DialogTitle id="new-route-dialog-title">Создать новый маршрут</DialogTitle>
         <DialogContent>
           <TextField
             autoFocus
@@ -476,8 +482,14 @@ const MapPage: React.FC = () => {
       </Dialog>
       
       {/* Диалог назначения дрона на маршрут */}
-      <Dialog open={assignDroneDialog} onClose={handleCloseAssignDroneDialog}>
-        <DialogTitle>Назначить БПЛА на маршрут</DialogTitle>
+      <Dialog 
+        open={assignDroneDialog} 
+        onClose={handleCloseAssignDroneDialog}
+        disablePortal={false}
+        keepMounted={false}
+        aria-labelledby="assign-drone-dialog-title"
+      >
+        <DialogTitle id="assign-drone-dialog-title">Назначить БПЛА на маршрут</DialogTitle>
         <DialogContent>
           <FormControl fullWidth sx={{ mt: 2 }}>
             <InputLabel>БПЛА</InputLabel>

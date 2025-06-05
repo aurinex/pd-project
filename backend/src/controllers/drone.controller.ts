@@ -91,9 +91,13 @@ export const getDroneById = async (req: Request, res: Response): Promise<void> =
 export const createDrone = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, model, serialNumber, status } = req.body;
+    
+    console.log('Попытка создания дрона:', { name, model, serialNumber, status });
+    console.log('Пользователь:', req.user);
 
     // Проверка обязательных полей
     if (!name || !model || !serialNumber) {
+      console.log('Ошибка: отсутствуют обязательные поля');
       res.status(400).json({
         success: false,
         message: 'Имя, модель и серийный номер обязательны'
@@ -103,6 +107,7 @@ export const createDrone = async (req: Request, res: Response): Promise<void> =>
 
     // @ts-ignore - пользователь добавляется через middleware
     const ownerId = req.user.id;
+    console.log('ID владельца дрона:', ownerId);
 
     // Проверка уникальности серийного номера
     const existingDrone = await prisma.drone.findUnique({

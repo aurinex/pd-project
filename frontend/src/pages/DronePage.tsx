@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
-  Grid,
   Card,
   CardContent,
   CardActions,
@@ -32,16 +31,23 @@ import {
   FlightTakeoff as FlightIcon
 } from '@mui/icons-material';
 import droneService, { type Drone, type DroneCreateData, type DroneUpdateData } from '../api/droneService';
+import eventService, { type EventCreateData } from '../api/eventService';
 
 // Тип для цвета чипа статуса
 type StatusColor = 'success' | 'info' | 'warning' | 'error' | 'default';
 
+// Расширяем тип DroneCreateData для поддержки batteryLevel
+interface ExtendedDroneCreateData extends DroneCreateData {
+  batteryLevel?: number;
+}
+
 const DronePage: React.FC = () => {
   const [drones, setDrones] = useState<Drone[]>([]);
+  const [previousDronesCount, setPreviousDronesCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');
   const [open, setOpen] = useState(false);
-  const [currentDrone, setCurrentDrone] = useState<Partial<DroneCreateData> | null>(null);
+  const [currentDrone, setCurrentDrone] = useState<Partial<ExtendedDroneCreateData> | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saveLoading, setSaveLoading] = useState<boolean>(false);
 
@@ -50,15 +56,54 @@ const DronePage: React.FC = () => {
     fetchDrones();
   }, []);
 
+  // Отслеживание изменений в количестве дронов
+  useEffect(() => {
+    // Проверяем, увеличилось ли количество дронов на 1
+    if (previousDronesCount > 0 && drones.length === previousDronesCount + 1) {
+      // Находим новый дрон (последний добавленный)
+      const newDrone = drones[drones.length - 1];
+      
+      // Создаем уведомление о новом дроне
+      createNewDroneNotification(newDrone);
+    }
+    
+    // Обновляем предыдущее количество дронов
+    setPreviousDronesCount(drones.length);
+  }, [drones.length, previousDronesCount]);
+
+  // Функция для создания уведомления о новом дроне
+  const createNewDroneNotification = async (drone: Drone) => {
+    try {
+      const eventData: EventCreateData = {
+        droneId: drone.id,
+        type: 'info',
+        severity: 'low',
+        message: `В наличии появился новый дрон: ${drone.name}`,
+        resolved: false
+      };
+      
+      await eventService.createEvent(eventData);
+      console.log(`Создано уведомление о новом дроне: ${drone.name}`);
+    } catch (error) {
+      console.error('Ошибка при создании уведомления:', error);
+    }
+  };
+
   // Функция для загрузки списка дронов
   const fetchDrones = async () => {
     try {
       setLoading(true);
       setError('');
       const data = await droneService.getAllDrones();
+      
+      // Если это первая загрузка, устанавливаем предыдущее количество дронов
+      if (previousDronesCount === 0) {
+        setPreviousDronesCount(data.length);
+      }
+      
       setDrones(data);
-    } catch (err: any) {
-      console.error('Ошибка при загрузке дронов:', err);
+    } catch (error: unknown) {
+      console.error('Ошибка при загрузке дронов:', error);
       setError('Не удалось загрузить список дронов. Пожалуйста, попробуйте позже.');
     } finally {
       setLoading(false);
@@ -113,13 +158,24 @@ const DronePage: React.FC = () => {
       // Перезагружаем список дронов
       await fetchDrones();
       handleClose();
-    } catch (err: any) {
-      console.error('Ошибка при сохранении дрона:', err);
-      if (err.response && err.response.data && err.response.data.message) {
-        setError(err.response.data.message);
-      } else {
-        setError('Не удалось сохранить дрон. Пожалуйста, проверьте данные и попробуйте снова.');
+    } catch (error: unknown) {
+      console.error('Ошибка при сохранении дрона:', error);
+      let errorMessage = 'Не удалось сохранить дрон. Пожалуйста, проверьте данные и попробуйте снова.';
+      
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { response?: { status?: number; data?: { message?: string } } };
+        // Получаем информацию об ошибке из ответа сервера
+        console.log('Статус ошибки:', axiosError.response?.status);
+        console.log('Данные ошибки:', axiosError.response?.data);
+        
+        if (axiosError.response?.status === 403) {
+          errorMessage = 'У вас нет прав для выполнения этого действия. Проверьте, имеет ли ваша учетная запись роль администратора или оператора.';
+        } else if (axiosError.response?.data?.message) {
+          errorMessage = axiosError.response.data.message;
+        }
       }
+      
+      setError(errorMessage);
     } finally {
       setSaveLoading(false);
     }
@@ -131,8 +187,8 @@ const DronePage: React.FC = () => {
         setLoading(true);
         await droneService.deleteDrone(id);
         await fetchDrones();
-      } catch (err: any) {
-        console.error('Ошибка при удалении дрона:', err);
+      } catch (error: unknown) {
+        console.error('Ошибка при удалении дрона:', error);
         setError('Не удалось удалить дрон. Пожалуйста, попробуйте позже.');
       } finally {
         setLoading(false);
@@ -140,35 +196,36 @@ const DronePage: React.FC = () => {
     }
   };
 
+  // Функция для получения цвета статуса
   const getStatusColor = (status: string): StatusColor => {
     switch (status) {
-      case 'ACTIVE': return 'success';
-      case 'IDLE': return 'info';
-      case 'MAINTENANCE': return 'warning';
-      case 'OFFLINE': return 'error';
-      default: return 'default';
+      case 'ACTIVE':
+        return 'success';
+      case 'IDLE':
+        return 'info';
+      case 'MAINTENANCE':
+        return 'warning';
+      case 'OFFLINE':
+        return 'error';
+      default:
+        return 'default';
     }
   };
 
-  const getStatusLabel = (status: string) => {
+  // Функция для получения текста статуса
+  const getStatusLabel = (status: string): string => {
     switch (status) {
-      case 'ACTIVE': return 'Активен';
-      case 'IDLE': return 'Ожидание';
-      case 'MAINTENANCE': return 'Обслуживание';
-      case 'OFFLINE': return 'Не в сети';
-      default: return status;
+      case 'ACTIVE':
+        return 'Активен';
+      case 'IDLE':
+        return 'Ожидание';
+      case 'MAINTENANCE':
+        return 'Обслуживание';
+      case 'OFFLINE':
+        return 'Не в сети';
+      default:
+        return status;
     }
-  };
-
-  const formatDate = (dateString: string | Date) => {
-    const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
-    return new Intl.DateTimeFormat('ru-RU', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
   };
 
   if (loading && drones.length === 0) {
@@ -180,13 +237,14 @@ const DronePage: React.FC = () => {
   }
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">
+    <Box sx={{ p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h4" component="h1">
           Управление дронами
         </Typography>
         <Button
           variant="contained"
+          color="primary"
           startIcon={<AddIcon />}
           onClick={() => handleOpen()}
         >
@@ -195,90 +253,97 @@ const DronePage: React.FC = () => {
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+        <Alert severity="error" sx={{ mb: 3 }}>
           {error}
         </Alert>
       )}
 
-      {drones.length === 0 && !loading ? (
-        <Alert severity="info">
-          Дроны не найдены. Добавьте новый дрон, нажав кнопку "Добавить дрон".
-        </Alert>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+          <CircularProgress />
+        </Box>
       ) : (
-        <Grid container spacing={3}>
-          {drones.map(drone => (
-            <Grid key={drone.id} item xs={12} sm={6} md={4} component="div">
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h6">{drone.name}</Typography>
-                    <Chip
-                      label={getStatusLabel(drone.status)}
-                      color={getStatusColor(drone.status)}
-                      size="small"
-                    />
-                  </Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Модель: {drone.model}
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 3 }}>
+          {drones.map((drone) => (
+            <Card key={drone.id}>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="h6" component="h2">
+                    {drone.name}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Серийный номер: {drone.serialNumber}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Последнее обновление: {formatDate(drone.updatedAt)}
-                  </Typography>
-                  
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <BatteryIcon color={drone.batteryLevel > 20 ? 'success' : 'error'} />
-                      <Typography variant="body2" sx={{ ml: 0.5 }}>
-                        {drone.batteryLevel}%
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <SpeedIcon color="action" />
-                      <Typography variant="body2" sx={{ ml: 0.5 }}>
-                        {drone.speed || 0} км/ч
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <HeightIcon color="action" />
-                      <Typography variant="body2" sx={{ ml: 0.5 }}>
-                        {drone.altitude || 0} м
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <SignalIcon color={drone.status === 'OFFLINE' ? 'error' : 'success'} />
-                      <Typography variant="body2" sx={{ ml: 0.5 }}>
-                        {drone.status === 'OFFLINE' ? '0%' : '100%'}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-                <CardActions>
-                  <Button
+                  <Chip
+                    label={getStatusLabel(drone.status)}
+                    color={getStatusColor(drone.status)}
                     size="small"
-                    startIcon={<FlightIcon />}
-                    disabled={drone.status !== 'IDLE'}
-                  >
-                    Запустить
-                  </Button>
-                  <Box sx={{ flexGrow: 1 }} />
-                  <IconButton size="small" onClick={() => handleOpen(drone)}>
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton size="small" color="error" onClick={() => handleDelete(drone.id)}>
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </CardActions>
-              </Card>
-            </Grid>
+                    icon={<FlightIcon />}
+                  />
+                </Box>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Модель: {drone.model}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Серийный номер: {drone.serialNumber}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
+                  <BatteryIcon color="primary" />
+                  <Typography variant="body2" sx={{ ml: 1 }}>
+                    Заряд: {drone.batteryLevel || 0}%
+                  </Typography>
+                </Box>
+                {drone.speed !== undefined && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                    <SpeedIcon color="primary" />
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      Скорость: {drone.speed} км/ч
+                    </Typography>
+                  </Box>
+                )}
+                {drone.altitude !== undefined && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                    <HeightIcon color="primary" />
+                    <Typography variant="body2" sx={{ ml: 1 }}>
+                      Высота: {drone.altitude} м
+                    </Typography>
+                  </Box>
+                )}
+                <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                  <SignalIcon color="primary" />
+                  <Typography variant="body2" sx={{ ml: 1 }}>
+                    Сигнал: {drone.status === 'OFFLINE' ? '0%' : '100%'}
+                  </Typography>
+                </Box>
+              </CardContent>
+              <CardActions>
+                <IconButton
+                  size="small"
+                  color="primary"
+                  onClick={() => handleOpen(drone)}
+                  aria-label="Редактировать"
+                >
+                  <EditIcon />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={() => handleDelete(drone.id)}
+                  aria-label="Удалить"
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </CardActions>
+            </Card>
           ))}
-        </Grid>
+        </Box>
       )}
 
-      <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-        <DialogTitle>
+      <Dialog
+        open={open}
+        onClose={handleClose}
+        aria-labelledby="drone-dialog-title"
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle id="drone-dialog-title">
           {editingId !== null ? 'Редактировать дрон' : 'Добавить новый дрон'}
         </DialogTitle>
         <DialogContent>
